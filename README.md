@@ -1,5 +1,7 @@
 # IC_tools
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 在工作中开发的一些有用的IC小工具
 
 1. RTL Hierarchy PATH Generator Scripts
