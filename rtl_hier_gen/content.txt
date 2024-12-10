@@ -1,0 +1,6 @@
+M: top
+    M: u_dut
+        M: u_module0
+            M: u_clk
+        M: u_module1
+            M: u_clk
