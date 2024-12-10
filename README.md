@@ -17,11 +17,21 @@
    
    (1) Export Hierarchy via Verdi GUI
    
-   ![image-20241211005723000](C:\Users\20926\Documents\GitHub\IC_tools\.assets\Figure_001)
+   ![image-20241211005723000](.assets/Figure_001)
    
    导出后文件为：
    
-   ![image-20241211010326953](C:\Users\20926\Documents\GitHub\IC_tools\.assets\Figure_002)
+   ![image-20241211010326953](.assets/Figure_002)
    
    (2) python3 rtl_hier_gen.py -f content.txt -o demo.sv
+   
+   执行完成后，可以看到如下文件：
+   
+   ![image-20241211011017033](.assets/Figure_003)
+   
+   如果有同名不同路径的模块，会自动在后面加后缀用于区分：
+   
+   ![image-20241211011517988](./assets/image-20241211011517988.png)
+   
+   ![image-20241211011547438](./assets/image-20241211011547438.png)
 
