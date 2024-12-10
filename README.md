@@ -25,7 +25,11 @@
    
    ![image-20241211010326953](.assets/Figure_002)
    
-   (2) python3 rtl_hier_gen.py -f content.txt -o demo.sv
+   (2) 执行脚本
+   
+   ```bash
+   python3 rtl_hier_gen.py -f content.txt -o demo.sv
+   ```
    
    执行完成后，可以看到如下文件：
    
