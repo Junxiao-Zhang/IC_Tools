@@ -1,6 +1,29 @@
-M: top
-    M: u_dut
-        M: u_module0
-            M: u_clk
-        M: u_module1
-            M: u_clk
+-------------------------------------
+Design Tree Hierarchy
+-------------------------------------
+ M: i2c_tb (i2c_tb)
+     M: dut (apb_i2c)
+         M: U_apb_i2c_biu (apb_i2c_biu)
+             N: IPWDATA_PROC
+             N: PRDATA_PROC
+         M: U_apb_i2c_clk_gen (apb_i2c_clk_gen)
+             N: BUS_IDLE_CNTR_PROC
+             N: BUS_IDLE_PROC
+         M: U_apb_i2c_fifo (apb_i2c_fifo)
+             M: U_apb_i2c_bcm21_ic2pl_rx_push_flg_psyzr (apb_i2c_bcm21)
+                 N: GEN_FST2
+                     N: posedge_registers_PROC
+             M: U_apb_i2c_bcm21_ic2pl_tx_pop_flg_psyzr (apb_i2c_bcm21)
+                 N: GEN_FST2
+                     N: posedge_registers_PROC
+             M: U_rx_fifo (apb_i2c_bcm06)
+                 N: GEN_EM_EQ2
+                 N: GEN_PWR2
+                 N: infer_incdec_PROC
+                 N: registers_PROC
+             M: U_tx_fifo (apb_i2c_bcm06)
+                 N: GEN_EM_EQ2
+                 N: GEN_PWR2
+                 N: infer_incdec_PROC
+                 N: registers_PROC
+
