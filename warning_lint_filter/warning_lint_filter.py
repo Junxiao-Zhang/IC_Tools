@@ -23,17 +23,34 @@ def get_parser():
     args = parser.parse_args()
     return args
 
-def extract_matching_blocks(args):
+def extract_matching_warning_blocks(args):
     with open (args.input_file, "r") as f:
         text = f.readline()
         pattern = re.compile(r"Warning-.*?(?=\n\n)", re.DOTALL)
         matches = pattern.findall(text)
+        return matches     
+
+def extract_matching_lint_blocks(args):
+    with open (args.input_file, "r") as f:
+        text = f.readline()
+        pattern = re.compile(r"Lint-.*?(?=\n\n)", re.DOTALL)
+        matches = pattern.findall(text)
         return matches         
+
+def gen_match_warning_lint_log(output_file, warning_block, lint_block):
+    with open(output_file, "w") as f:
+        for i in warning_block:
+            f.writelines(i)
+            f.writelines("\n-----------------------------------------------\n")
+        for j in lint_block:
+            f.writelines(j)
+            f.writelines("\n-----------------------------------------------\n")
 
 def main():
     args = get_parser()
-    match_blocks = extract_matching_blocks(args)
-    print(match_blocks)
+    match_warning_blocks = extract_matching_warning_blocks(args)
+    match_lint_blocks = extract_matching_lint_blocks(args)
+    gen_match_warning_lint_log(args.output_name, match_warning_blocks, match_lint_blocks)
 
 if __name__ == "__main__":
     main()
