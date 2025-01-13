@@ -41,3 +41,9 @@
    
    ![image-20241211011547438](.assets/image-20241211011547438.png)
 
+2. warning_lint_filter
+
+    基于vcs编译仿真log，通过正则表达式过滤warning & lint信息，产生warning和lint的报告。
+    ```
+    python3 warning_lint_filter.py -f vcs.log -o warning.rpt
+    ```
