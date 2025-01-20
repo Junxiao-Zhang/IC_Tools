@@ -25,7 +25,7 @@ def get_parser():
 
 def extract_matching_warning_blocks(args):
     with open (args.input_file, "r") as f:
-        text = f.readline()
+        text = f.read()
         pattern = re.compile(r"Warning-.*?(?=\n\n)", re.DOTALL)
         matches = pattern.findall(text)
         return matches     
