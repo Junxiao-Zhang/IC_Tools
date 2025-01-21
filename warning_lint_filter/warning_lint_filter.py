@@ -15,44 +15,76 @@
 import argparse
 from string import Template
 import re
+import os
 
-def get_parser():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-f", "--input_file", type=str, help="input the vcs compile log")
-    parser.add_argument("-o", "--output_name", type=str, help="output file name")
-    args = parser.parse_args()
-    return args
+# if you want to add more target file, you can add the file name in the list
+target_file = ["vcs.log", "simv.log"]
 
-def extract_matching_warning_blocks(args):
-    with open (args.input_file, "r") as f:
-        text = f.read()
-        pattern = re.compile(r"Warning-.*?(?=\n\n)", re.DOTALL)
-        matches = pattern.findall(text)
-        return matches     
+# if you want to waive some warning, you can add the warning content in the list
+# eg. if you want to waive the warning "ICPSD_W", you can add "ICPSD_W" in the list
+waive_list = ["ICPSD_W"]
 
-def extract_matching_lint_blocks(args):
-    with open (args.input_file, "r") as f:
-        text = f.readline()
-        pattern = re.compile(r"Lint-.*?(?=\n\n)", re.DOTALL)
-        matches = pattern.findall(text)
-        return matches         
 
-def gen_match_warning_lint_log(output_file, warning_block, lint_block):
-    with open(output_file, "w") as f:
-        for i in warning_block:
+# search the taget file in the directory, and extract the matching block
+def extract_matching_blcok(directory, target_file):
+    match_dir = {}
+    match_block = []
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            for i in range(len(target_file)):
+                if file == target_file[i]:
+                    file_path = os.path.join(root, file)
+                    print(f"Found target file: {file_path}")
+                    with open(file_path, "r") as f:
+                        text = f.read()
+                        pattern = re.compile(r"Warning-.*?(?=\n\n)", re.DOTALL)
+                        matches = pattern.findall(text)
+                        match_dir[file_path] = matches
+    return match_dir
+
+# filter the duplicate warning
+def gen_warning_lint_filter(match_dir):
+    duplicate = []
+    result = []
+    for file_path in match_dir:
+        for content in match_dir[file_path]:
+            if content not in duplicate:
+                duplicate.append(content)
+                result.append(content)
+
+    return result
+
+def gen_warning_log(result):
+    waive_content = []
+    # generate the warning log, if the warning content is not in the waive list, it will be written in the warning.log
+    with open("warning.log", "w") as f:
+        for i in result:
+            if check_elements_in_string(i, waive_list):
+                f.writelines(i)
+                f.writelines("\n----------------------------------\n")
+            else:
+                waive_content.append(i)
+
+    # generate the waive log, to help you reivew the waived content
+    with open("waive.log", "w") as f:
+        for i in waive_content:
             f.writelines(i)
-            f.writelines("\n-----------------------------------------------\n")
-        for j in lint_block:
-            f.writelines(j)
-            f.writelines("\n-----------------------------------------------\n")
+            f.writelines("\n----------------------------------\n")
+
+
+# check the content is not in the waive list 
+def check_elements_in_string(s, lst):
+    for element in lst:
+        if element in s:
+            return False
+    return True
+
 
 def main():
-    args = get_parser()
-    match_warning_blocks = extract_matching_warning_blocks(args)
-    match_lint_blocks = extract_matching_lint_blocks(args)
-    gen_match_warning_lint_log(args.output_name, match_warning_blocks, match_lint_blocks)
+    current_path = os.getcwd()
+    match_dir = extract_matching_blcok(current_path, target_file)
+    result = gen_warning_lint_filter(match_dir)
+    gen_warning_log(result)
 
 if __name__ == "__main__":
     main()
-
-
