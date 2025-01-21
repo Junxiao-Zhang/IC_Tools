@@ -17,7 +17,7 @@
 #   -------------------------------------------------------------------------------------
 #    0.1    |  2024-12-12 |  Junxiao |  Initial version 
 #    0.1.1  |  2024-01-20 |  Junxiao |  Fix the bug: use read() instead of readlines() 
-#    0.2    |  2024-01-20 |  Junxiao |  add the feature: 
+#    0.2    |  2024-01-21 |  Junxiao |  add the feature: 
 #                                          1.  Supports chcking for warnings in all matching files under the current path.
 #                                          2.  Supports filtering duplicate warnings.     
 
