@@ -20,6 +20,7 @@
 #    0.2    |  2024-01-21 |  Junxiao |  add the feature: 
 #                                          1.  Supports chcking for warnings in all matching files under the current path.
 #                                          2.  Supports filtering duplicate warnings.     
+#                                          3.  Supports filtering the waived warnings.
 
 import argparse
 from string import Template

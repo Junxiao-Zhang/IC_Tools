@@ -43,7 +43,18 @@ python3 rtl_hier_gen.py -f content.txt -o demo.sv
 
 ## 2. warning_lint_filter
 
-基于vcs编译仿真log，通过正则表达式过滤warning & lint信息，产生warning和lint的报告。
+基于vcs编译仿真log，通过正则表达式过滤warning & lint信息，产生warning和lint的报告。将脚本复制到你想要检查的路径下，修改下图中的target_file和waive_list列表：
+
+![image-20250122000756660](./assets/image-20250122000756660.png)
+
+然后执行如下命令 ：
+
 ```
-python3 warning_lint_filter.py -f vcs.log -o warning.rpt
+python3 warning_lint_filter.py 
 ```
+
+20250122更新：
+
+- 增加递归匹配文件功能，可以在当前路径及子文件夹中找到目标文件，然后过滤出warning 信息
+- 支持将过滤出的所有warning信息去重，然后保存到结果文件
+- 支持添加waive list，关键字被添加后，输出的结果将不包含waive list中的内容，waive list匹配的内容，也会独立输出到一个waive.log文件，方便后续review waive的warning。
