@@ -150,7 +150,6 @@ module gddr6_channel_checker (
         // it is better to conside the power-up sequence & CA training sequence, but to simplify the model, it is not considered here.
         // after the Command Address Training, the controller can issue the command to the SDRAM.(optional)
         if (gddr_cmd[3] != `LOW) begin
-            pre_gddr_command = gddr_command;
             case (gddr_cmd[3:0])
                 4'b1101: begin
                     if (row_addr[8] == `LOW) gddr_command = `RD;
