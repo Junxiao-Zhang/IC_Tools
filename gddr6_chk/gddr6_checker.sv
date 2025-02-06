@@ -111,7 +111,7 @@ module gddr6_channel_checker (
     logic [14:0] row_addr;
 
     // command & pre command
-    logic [4:0] gddr_command, pre_gddr_command;
+    logic [4:0] gddr_command;
 
     // record the command issue time, total 16 banks
     real  pre_read_command_time[`BANK_NUM];
