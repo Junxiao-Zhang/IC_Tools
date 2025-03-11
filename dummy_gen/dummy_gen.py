@@ -16,53 +16,58 @@
 #    Rev    |  Date       |  Author  |  Change Description
 #   -------------------------------------------------------------------------------------
 #    0.1    |  2024-12-10 |  Junxiao |  Initial version
+from __future__ import absolute_import
+from __future__ import print_function
+import sys
+import os
+from optparse import OptionParser
 
-import argparse
+# the next line can be removed after installation
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import pyverilog
 from pyverilog.vparser.parser import parse
-from pyverilog.ast_code_generator.codegen import ASTCodeGenerator
 
 
-def get_parser():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--input", type=str, help="input verilog file")
-    parser.add_argument("-o", "--output", type=str, help="output verilog file")
-    args = parser.parse_args()
-    return args
+def main():
+    INFO = "Verilog code parser"
+    VERSION = pyverilog.__version__
+    USAGE = "Usage: python example_parser.py file ..."
+
+    def showVersion():
+        print(INFO)
+        print(VERSION)
+        print(USAGE)
+        sys.exit()
+
+    optparser = OptionParser()
+    optparser.add_option("-v", "--version", action="store_true", dest="showversion",
+                         default=False, help="Show the version")
+    optparser.add_option("-I", "--include", dest="include", action="append",
+                         default=[], help="Include path")
+    optparser.add_option("-D", dest="define", action="append",
+                         default=[], help="Macro Definition")
+    (options, args) = optparser.parse_args()
+
+    filelist = args
+    if options.showversion:
+        showVersion()
+
+    for f in filelist:
+        if not os.path.exists(f):
+            raise IOError("file not found: " + f)
+
+    if len(filelist) == 0:
+        showVersion()
+
+    ast, directives = parse(filelist,
+                            preprocess_include=options.include,
+                            preprocess_define=options.define)
+
+    ast.show()
+    for lineno, directive in directives:
+        print('Line %d : %s' % (lineno, directive))
 
 
-def generate_stub_module(verilog_file, output_file):
-    # 解析 Verilog 文件并生成 AST
-    ast, _ = parse([verilog_file])
-
-    # 遍历 AST，找到模块定义
-    for child in ast.children():
-        if child.__class__.__name__ == "ModuleDef":
-            module_def = child
-            break
-    else:
-        raise ValueError("No module definition found in the file")
-
-    # 清空模块内部逻辑，只保留端口声明和参数
-    module_def.items = [
-        item
-        for item in module_def.items
-        if item.__class__.__name__ in ("Decl", "Parameter", "Localparam")
-    ]
-
-    # 生成新的 Verilog 代码
-    codegen = ASTCodeGenerator()
-    stub_code = codegen.visit(ast)
-
-    # 写入输出文件
-    with open(output_file, "w") as f:
-        f.write(stub_code)
-
-
-if __name__ == "__main__":
-    args = get_parser()
-    print(args)
-    input_name = args.input
-    output_name = args.output
-
-    generate_stub_module(input_name, output_name)
-    print(f"Successfully generated stub module: ")
+if __name__ == '__main__':
+    main()
