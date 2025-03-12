@@ -64,9 +64,10 @@ def main():
                             preprocess_include=options.include,
                             preprocess_define=options.define)
 
-    ast.show()
-    for lineno, directive in directives:
-        print('Line %d : %s' % (lineno, directive))
+    #ast.show(attrnames=True)
+
+    for c in ast.children():
+        print(c.children()[0].portlist.ports[0].show())
 
 
 if __name__ == '__main__':
