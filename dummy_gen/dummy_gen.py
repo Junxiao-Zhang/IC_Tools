@@ -67,7 +67,12 @@ def main():
     #ast.show(attrnames=True)
 
     for c in ast.children():
-        print(c.children()[0].portlist.ports[0].show())
+        
+        c.children()[0].show()
+
+        #for i in c.children()[0].portlist.ports:
+        #    print(i.show())
+        #    print(c.children()[0].portlist.ports[0].show())
 
 
 if __name__ == '__main__':
