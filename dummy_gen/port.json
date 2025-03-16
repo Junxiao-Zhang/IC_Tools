@@ -1,0 +1,6 @@
+{
+    "port_name" : {
+        "type" : "input",
+        "width" : "[1:0]"
+    }
+}

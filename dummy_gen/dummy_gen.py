@@ -34,6 +34,8 @@ def main():
     VERSION = pyverilog.__version__
     USAGE = "Usage: python example_parser.py file ..."
 
+    #the useful info for scripts
+
     def showVersion():
         print(INFO)
         print(VERSION)
@@ -68,11 +70,21 @@ def main():
 
     for c in ast.children():
         
-        c.children()[0].show()
+        #c.children()[0].show()
+        #print(c.children()[0].name)
+        module_name =  c.children()[0].name 
 
-        #for i in c.children()[0].portlist.ports:
-        #    print(i.show())
-        #    print(c.children()[0].portlist.ports[0].show())
+        for i in c.children()[0].portlist.ports:
+            print("----------------")
+            #print(i.show())
+            print(i.first.name)
+            port_name = i.first.name
+            if i.first.width is not None:
+                print(i.first.width.msb)
+                print(i.first.width.lsb)
+ 
+            else:
+                width = ""
 
 
 if __name__ == '__main__':
