@@ -28,6 +28,24 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pyverilog
 from pyverilog.vparser.parser import parse
 
+def generate_expression(input_str):
+    # 去掉括号并分割成单词
+    parts = input_str.strip('()').split()
+    
+    if len(parts) != 3:
+        return "Invalid input format"
+    
+    operation, variable, value = parts
+    
+    # 根据操作生成对应的表达式
+    if operation == "Minus":
+        return f"{variable}-{value}"
+    elif operation == "Divide":
+        return f"{variable}/{value}"
+    elif operation == "Plus":
+        return f"{variable}+{value}"
+    else:
+        return "Unsupported operation"
 
 def main():
     INFO = "Verilog code parser"
@@ -82,6 +100,8 @@ def main():
             if i.first.width is not None:
                 print(i.first.width.msb)
                 print(i.first.width.lsb)
+                if "Minus" in str(i.first.width.msb):
+                    print(generate_expression(str(i.first.width.msb)))
  
             else:
                 width = ""
