@@ -100,8 +100,12 @@ def main():
             if i.first.width is not None:
                 print(i.first.width.msb)
                 print(i.first.width.lsb)
-                if "Minus" in str(i.first.width.msb):
-                    print(generate_expression(str(i.first.width.msb)))
+                if "Minus" in str(i.first.width.msb) or "Divide" in str(i.first.width.msb) or "Plus" in str(i.first.width.msb):
+                    msb_string = generate_expression(str(i.first.width.msb))
+                    print(msb_string)
+                else:
+                    msb_string = i.first.width.msb 
+                    print(msb_string)
  
             else:
                 width = ""
