@@ -70,15 +70,15 @@ def main():
     (options, args) = optparser.parse_args()
 
     filelist = args
-    if options.showversion:
-        showVersion()
+    #if options.showversion:
+    #    showVersion()
 
-    for f in filelist:
-        if not os.path.exists(f):
-            raise IOError("file not found: " + f)
+    #for f in filelist:
+    #    if not os.path.exists(f):
+    #        raise IOError("file not found: " + f)
 
-    if len(filelist) == 0:
-        showVersion()
+    #if len(filelist) == 0:
+    #    showVersion()
 
     ast, directives = parse(filelist,
                             preprocess_include=options.include,
@@ -88,27 +88,26 @@ def main():
 
     for c in ast.children():
         
-        #c.children()[0].show()
         #print(c.children()[0].name)
         module_name =  c.children()[0].name 
 
         for i in c.children()[0].portlist.ports:
             print("----------------")
             #print(i.show())
-            print(i.first.name)
+            #print(i.first.name)
             port_name = i.first.name
             if i.first.width is not None:
-                print(i.first.width.msb)
-                print(i.first.width.lsb)
                 if "Minus" in str(i.first.width.msb) or "Divide" in str(i.first.width.msb) or "Plus" in str(i.first.width.msb):
                     msb_string = generate_expression(str(i.first.width.msb))
-                    print(msb_string)
                 else:
                     msb_string = i.first.width.msb 
-                    print(msb_string)
- 
+                lsb_string = i.first.width.lsb
+                width_string = f"[{msb_string}:{lsb_string}]"
+                print(width_string) 
             else:
-                width = ""
+                width_string = ""
+            
+            print(i.first.value)
 
 
 if __name__ == '__main__':
