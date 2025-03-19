@@ -52,14 +52,6 @@ def main():
     VERSION = pyverilog.__version__
     USAGE = "Usage: python example_parser.py file ..."
 
-    #the useful info for scripts
-
-    def showVersion():
-        print(INFO)
-        print(VERSION)
-        print(USAGE)
-        sys.exit()
-
     optparser = OptionParser()
     optparser.add_option("-v", "--version", action="store_true", dest="showversion",
                          default=False, help="Show the version")
@@ -70,21 +62,12 @@ def main():
     (options, args) = optparser.parse_args()
 
     filelist = args
-    #if options.showversion:
-    #    showVersion()
-
-    #for f in filelist:
-    #    if not os.path.exists(f):
-    #        raise IOError("file not found: " + f)
-
-    #if len(filelist) == 0:
-    #    showVersion()
 
     ast, directives = parse(filelist,
                             preprocess_include=options.include,
                             preprocess_define=options.define)
-
-    #ast.show(attrnames=True)
+    
+    declared_list = []
 
     for c in ast.children():
         
@@ -92,9 +75,6 @@ def main():
         module_name =  c.children()[0].name 
 
         for i in c.children()[0].portlist.ports:
-            print("----------------")
-            #print(i.show())
-            #print(i.first.name)
             port_name = i.first.name
             if i.first.width is not None:
                 if "Minus" in str(i.first.width.msb) or "Divide" in str(i.first.width.msb) or "Plus" in str(i.first.width.msb):
@@ -103,13 +83,15 @@ def main():
                     msb_string = i.first.width.msb 
                 lsb_string = i.first.width.lsb
                 width_string = f"[{msb_string}:{lsb_string}]"
-                print(width_string) 
             else:
                 width_string = ""
 
             type_string = type(i.first).__name__ 
-            print(type_string)
 
+            decl_string = f"{type_string.lower()} {width_string} {port_name}"
+            declared_list.append(decl_string)
+
+    print(declared_list)
 
 if __name__ == '__main__':
     main()
