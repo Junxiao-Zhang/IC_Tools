@@ -48,13 +48,8 @@ def generate_expression(input_str):
         return "Unsupported operation"
 
 def main():
-    INFO = "Verilog code parser"
-    VERSION = pyverilog.__version__
-    USAGE = "Usage: python example_parser.py file ..."
 
     optparser = OptionParser()
-    optparser.add_option("-v", "--version", action="store_true", dest="showversion",
-                         default=False, help="Show the version")
     optparser.add_option("-I", "--include", dest="include", action="append",
                          default=[], help="Include path")
     optparser.add_option("-D", dest="define", action="append",
