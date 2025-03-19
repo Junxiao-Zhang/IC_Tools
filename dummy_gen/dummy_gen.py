@@ -106,8 +106,9 @@ def main():
                 print(width_string) 
             else:
                 width_string = ""
-            
-            print(i.first.value)
+
+            type_string = type(i.first).__name__ 
+            print(type_string)
 
 
 if __name__ == '__main__':
