@@ -133,7 +133,6 @@ def main():
     else:
         dummy_file = template.substitute(module_name=module_name, parameter_list_string=parameter_list_string, declared_list_string=declared_list_string, assign_list_string=assign_list_string)
 
-    print(dummy_file)    
     with open(args.output_file, "w") as f:
         f.write(dummy_file)
 
