@@ -22,6 +22,7 @@ import sys
 import os
 from optparse import OptionParser
 
+
 # the next line can be removed after installation
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -61,11 +62,20 @@ def main():
                             preprocess_define=options.define)
     
     declared_list = []
+    parameter_list = []
+    assign_list = []
 
     for c in ast.children():
         
-        #print(c.children()[0].name)
-        module_name =  c.children()[0].name 
+        #c.children()[0].show()
+        module_name =  c.children()[0].name
+
+
+        for i in c.children()[0].paramlist.params:
+            param_name = i.children()[0].name
+            param_value = i.children()[0].value.var
+            parameter_string = f"parameter {param_name} = {param_value}"
+            parameter_list.append(parameter_string)
 
         for i in c.children()[0].portlist.ports:
             port_name = i.first.name
@@ -81,11 +91,18 @@ def main():
 
             type_string = type(i.first).__name__ 
 
+            if type_string == "Output":
+                assign_string = "assign" + " " + port_name + " = " + "0" + ";" 
+                assign_list.append(assign_string)
+                
+
             decl_string = f"{type_string.lower()} {width_string} {port_name}"
             declared_list.append(decl_string)
 
-    print(declared_list)
     print(module_name)
+    print(declared_list)
+    print(parameter_list)
+    print(assign_list)
 
 if __name__ == '__main__':
     main()
