@@ -1,3 +1,4 @@
 dummy_gen/parser.out
 dummy_gen/parsetab.py
 dummy_gen/case.py
+dummy_gen/demo_stub.v

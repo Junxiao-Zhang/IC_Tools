@@ -21,8 +21,8 @@ from __future__ import absolute_import
 from __future__ import print_function
 import sys
 import os
-from optparse import OptionParser
 from string import Template
+import argparse
 
 
 # the next line can be removed after installation
@@ -34,7 +34,7 @@ from pyverilog.vparser.parser import parse
 template = Template("""
 module $module_name #(
 $parameter_list_string
-) (
+)(
 $declared_list_string
 );
 
@@ -70,20 +70,21 @@ def generate_expression(input_str):
     else:
         return "Unsupported operation"
 
+def get_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--input_file", type=str, help="input RTL file, which will be converted to dummy file")
+    parser.add_argument("-o", "--output_file", type=str, help="output file name")
+    args = parser.parse_args()
+    return args
+
 def main():
+    filelist = []
 
-    optparser = OptionParser()
-    optparser.add_option("-I", "--include", dest="include", action="append",
-                         default=[], help="Include path")
-    optparser.add_option("-D", dest="define", action="append",
-                         default=[], help="Macro Definition")
-    (options, args) = optparser.parse_args()
+    args = get_parser()
+    filelist.append(args.input_file)
 
-    filelist = args
-
-    ast, directives = parse(filelist,
-                            preprocess_include=options.include,
-                            preprocess_define=options.define)
+    ast, directives = parse(filelist)
+    print(ast.show())
     
     declared_list = []
     parameter_list = []
@@ -133,6 +134,8 @@ def main():
         dummy_file = template.substitute(module_name=module_name, parameter_list_string=parameter_list_string, declared_list_string=declared_list_string, assign_list_string=assign_list_string)
 
     print(dummy_file)    
+    with open(args.output_file, "w") as f:
+        f.write(dummy_file)
 
 
 if __name__ == '__main__':
