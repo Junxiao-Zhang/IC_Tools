@@ -29,7 +29,6 @@ import pyverilog
 from pyverilog.vparser.parser import parse
 
 def generate_expression(input_str):
-    # 去掉括号并分割成单词
     parts = input_str.strip('()').split()
     
     if len(parts) != 3:
@@ -37,7 +36,6 @@ def generate_expression(input_str):
     
     operation, variable, value = parts
     
-    # 根据操作生成对应的表达式
     if operation == "Minus":
         return f"{variable}-{value}"
     elif operation == "Divide":
@@ -87,6 +85,7 @@ def main():
             declared_list.append(decl_string)
 
     print(declared_list)
+    print(module_name)
 
 if __name__ == '__main__':
     main()
