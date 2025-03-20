@@ -60,11 +60,19 @@ python3 warning_lint_filter.py
 - 支持添加waive list，关键字被添加后，输出的结果将不包含waive list中的内容，waive list匹配的内容，也会独立输出到一个waive.log文件，方便后续review waive的warning。
 
 ## 3. dummy block generation
-基于pyverilog库，通过调用python库中封装的函数，产生AST语法树，再通过解析语法树提取port信息和module name，产生对应的stub module。
+基于pyverilog库，通过调用python库中封装的函数，产生AST语法树，再通过解析语法树提取port信息和module name，产生对应的stub module。input信号输入到模块后悬空，output信号直接进行tie0处理，inout信号也进行tie0处理。
 
 ```
 该脚本基于pyverilog开发，关于该库的文档可以参考：
 https://github.com/PyHDI/Pyverilog
 ```
-
-
+使用脚本前，需要安装pyverilog库：
+```
+sudo apt install iverilog
+pip3 install pyverilog
+```
+运行示例：
+```
+python3 dummy_gen.py demo.v
+python3 dummy_gen.py demo1.v
+```
