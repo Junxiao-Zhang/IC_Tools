@@ -24,10 +24,6 @@ import os
 from string import Template
 import argparse
 
-
-# the next line can be removed after installation
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import pyverilog
 from pyverilog.vparser.parser import parse
 
@@ -84,7 +80,6 @@ def main():
     filelist.append(args.input_file)
 
     ast, directives = parse(filelist)
-    print(ast.show())
     
     declared_list = []
     parameter_list = []

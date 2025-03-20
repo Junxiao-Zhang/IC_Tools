@@ -73,6 +73,8 @@ pip3 install pyverilog
 ```
 运行示例：
 ```
-python3 dummy_gen.py demo.v
-python3 dummy_gen.py demo1.v
+# 带parameter的例子
+python3 dummy_gen.py -i demo.v -o demo_stub.v
+# 不带parameter的例子
+python3 dummy_gen.py -i demo1.v -o demo1_stub.v
 ```
