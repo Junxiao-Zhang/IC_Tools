@@ -15,12 +15,14 @@
 ########################################################################################
 #    Rev    |  Date       |  Author  |  Change Description
 #   -------------------------------------------------------------------------------------
-#    0.1    |  2024-12-10 |  Junxiao |  Initial version
+#    0.1    |  2025-03-20 |  Junxiao |  Initial version
+#   -------------------------------------------------------------------------------------
 from __future__ import absolute_import
 from __future__ import print_function
 import sys
 import os
 from optparse import OptionParser
+from string import Template
 
 
 # the next line can be removed after installation
@@ -28,6 +30,28 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pyverilog
 from pyverilog.vparser.parser import parse
+
+template = Template("""
+module $module_name #(
+$parameter_list_string
+) (
+$declared_list_string
+);
+
+$assign_list_string
+
+endmodule
+""")
+
+template_noparam = Template("""
+module $module_name (
+$declared_list_string
+);
+
+$assign_list_string
+
+endmodule
+""")
 
 def generate_expression(input_str):
     parts = input_str.strip('()').split()
@@ -67,9 +91,7 @@ def main():
 
     for c in ast.children():
         
-        #c.children()[0].show()
         module_name =  c.children()[0].name
-
 
         for i in c.children()[0].paramlist.params:
             param_name = i.children()[0].name
@@ -92,17 +114,26 @@ def main():
             type_string = type(i.first).__name__ 
 
             if type_string == "Output":
-                assign_string = "assign" + " " + port_name + " = " + "0" + ";" 
+                assign_string = "assign" + " " + port_name + " = " + "'h0" + ";" 
+                assign_list.append(assign_string)
+            elif type_string == "Inout":
+                assign_string = "assign" + " " + port_name + " = " + "'h0" + ";" 
                 assign_list.append(assign_string)
                 
-
             decl_string = f"{type_string.lower()} {width_string} {port_name}"
             declared_list.append(decl_string)
 
-    print(module_name)
-    print(declared_list)
-    print(parameter_list)
-    print(assign_list)
+    parameter_list_string = ",\n".join(parameter_list)
+    declared_list_string = ",\n".join(declared_list)
+    assign_list_string = "\n".join(assign_list)
+
+    if len(parameter_list) == 0:
+        dummy_file = template_noparam.substitute(module_name=module_name, declared_list_string=declared_list_string, assign_list_string=assign_list_string)
+    else:
+        dummy_file = template.substitute(module_name=module_name, parameter_list_string=parameter_list_string, declared_list_string=declared_list_string, assign_list_string=assign_list_string)
+
+    print(dummy_file)    
+
 
 if __name__ == '__main__':
     main()
