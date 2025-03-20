@@ -58,3 +58,13 @@ python3 warning_lint_filter.py
 - 增加递归匹配文件功能，可以在当前路径及子文件夹中找到目标文件，然后过滤出warning 信息
 - 支持将过滤出的所有warning信息去重，然后保存到结果文件
 - 支持添加waive list，关键字被添加后，输出的结果将不包含waive list中的内容，waive list匹配的内容，也会独立输出到一个waive.log文件，方便后续review waive的warning。
+
+## 3. dummy block generation
+基于pyverilog库，通过调用python库中封装的函数，产生AST语法树，再通过解析语法树提取port信息和module name，产生对应的stub module。
+
+```
+该脚本基于pyverilog开发，关于该库的文档可以参考：
+https://github.com/PyHDI/Pyverilog
+```
+
+
