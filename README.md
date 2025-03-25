@@ -78,3 +78,5 @@ python3 dummy_gen.py -i demo.v -o demo_stub.v
 # 不带parameter的例子
 python3 dummy_gen.py -i demo1.v -o demo1_stub.v
 ```
+## 4. Post-processing of Simulation Logs 
+通过python读取vcs仿真后产生的log文件，过滤出log中的Warning, Error, Offending, Constraint Solve Fail等信息，在Terminal中打印FAIL，PASS等关键字。支持添加waive list，用于过滤错误信息。
