@@ -1,0 +1,4 @@
+name,hierarchy,signal,expect value,error_info
+fifo_empty_checker,tb_top.u_dut.u_apb_i2c_fifo,fifo_empty,1'b0,i2c fifo should be empty in the end of test
+bus_idle_checker,tb_top.u_dut,bus_idle,1'b1,bus idle should be high active in the end of test
+bus1_idle_checker,tb_top.u_dut,bus_idle,1'b1,
