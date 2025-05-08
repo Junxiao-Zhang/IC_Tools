@@ -46,7 +46,7 @@ python3 rtl_hier_gen.py -f content.txt -o demo.sv
 
 基于vcs编译仿真log，通过正则表达式过滤warning & lint信息，产生warning和lint的报告。将脚本复制到你想要检查的路径下，修改下图中的target_file和waive_list列表：
 
-![image-20250122000756660](./assets/image-20250122000756660.png)
+![image-20250122000756660](./.assets/image-20250122000756660.png)
 
 然后执行如下命令 ：
 
