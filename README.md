@@ -124,3 +124,25 @@ csv的格式如下：
 > error_info: 断言失败时打印信息，辅助定位。可不写，会自动产生默认语句。
 
 产生eot_module.sv之后，可以在Testbench顶层中直接例化即可。
+
+## 5. Coverage Report Generation
+
+基于输入件`simv.vdb`,产生excel覆盖率报告,用于说明未覆盖点。脚本支持1个输入：
+
+1.输入需要导出覆盖率的verilog module名。
+
+```
+python3 gen_coverage_rpt.py -h
+usage: gen_coverage_rpt.py [-h] -m M
+
+Extract coverage data from VDB databases
+
+optional arguments:
+  -h, --help  show this help message and exit
+  -m M        Module name to extract
+```
+
+运行实例：
+```
+python3 gen_coverage_rpt.py -m uart_tx
+```
