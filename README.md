@@ -1,104 +1,137 @@
-# IC_tools
+# IC_Tools
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-在工作中开发的一些有用的IC小工具
+IC 设计与验证中开发的一些实用工具集，涵盖 RTL 层次路径生成、Warning 过滤、Dummy 模块生成、终态检查、覆盖率报告等场景。
 
-## 1. RTL Hierarchy PATH Generator Scripts
+## 目录
 
-基于verdi文件产生设计不同层次的宏定义path，用于取代绝对层次路径，提升后续项目中的可复用性
+- [1. RTL Hierarchy PATH Generator](#1-rtl-hierarchy-path-generator)
+- [2. Warning / Lint Filter](#2-warning--lint-filter)
+- [3. Dummy Block Generation](#3-dummy-block-generation)
+- [4. End of Test Checker（终态检查）](#4-end-of-test-checker终态检查)
+- [5. Coverage Report Generation](#5-coverage-report-generation)
 
-目录结构：
+## 依赖环境
 
-- rtl_hier_gen
-  - rtl_hier_gen.py
-  - content.txt
-  - README.md
-  - demo.sv
+各工具依赖如下，按需安装：
 
-How to use :
+| 工具 | Python 库 | 系统 / EDA 工具 |
+|------|----------|-----------------|
+| `dummy_gen` | `pyverilog` | `iverilog`（`sudo apt install iverilog`） |
+| `gen_cov_report` | `openpyxl` | Synopsys `urg`（需在 PATH 中） |
+| `unicode_string` | `pyfiglet` | — |
+| 其他 | 标准库即可 | — |
 
-(1) Export Hierarchy via Verdi GUI
+---
 
-![image-20241211005723000](.assets/Figure_001)
+## 1. RTL Hierarchy PATH Generator
 
-导出后文件为：
+基于 Verdi 导出的设计层次文件，生成 `define` 宏定义 PATH，用于取代绝对层次路径，提升跨项目复用性。
 
-![image-20241211010326953](.assets/Figure_002)
+**目录结构：**
 
-(2) 执行脚本
+```
+rtl_hier_gen/
+  ├── rtl_hier_gen.py
+  ├── content.txt          # 示例输入：Verdi 导出的层次文件
+  ├── demo.sv              # 示例输出
+  └── README.md
+```
+
+**使用方法：**
+
+1. 通过 Verdi GUI 导出 Hierarchy：
+   
+   ![导出 Hierarchy](.assets/Figure_001)
+   
+   导出后的文件内容如下：
+   
+   ![导出文件内容](.assets/Figure_002)
+
+2. 执行脚本：
+
+   ```bash
+   python3 rtl_hier_gen.py -f content.txt -o demo.sv
+   ```
+
+3. 生成结果：
+
+   ![生成结果](.assets/Figure_003)
+
+   同名不同路径的模块会自动追加后缀（`_0`、`_1` …）加以区分：
+
+   ![同名区分-1](.assets/image-20241211011517988.png)
+   ![同名区分-2](.assets/image-20241211011547438.png)
+
+---
+
+## 2. Warning / Lint Filter
+
+基于 VCS 编译仿真 log，通过正则表达式过滤 Warning 和 Lint 信息，生成分类报告。
+
+**使用方法：**
+
+1. 将脚本复制到目标目录下。
+2. 修改脚本中的 `target_file` 和 `waive_list` 列表：
+   
+   ![配置截图](./.assets/image-20250122000756660.png)
+
+3. 执行：
+
+   ```bash
+   python3 warning_lint_filter.py
+   ```
+
+**功能特性（2025-01-22 更新）：**
+
+- 递归搜索当前目录及子目录中的目标文件（`vcs.log` / `simv.log`）
+- 提取所有 `Warning-*` 块并自动去重，输出到 `warning.log`
+- 支持 waive list：命中 waive 关键字的内容单独输出到 `waive.log`，方便后续 review
+
+---
+
+## 3. Dummy Block Generation
+
+基于 [pyverilog](https://github.com/PyHDI/Pyverilog) 库解析 Verilog RTL 的 AST 语法树，提取 module name 和 port 信息，自动生成对应的 stub 模块：
+- `input` 端口悬空
+- `output` 端口 tie 0（`'h0`）
+- `inout` 端口 tie 0（`'h0`）
+
+**依赖安装：**
 
 ```bash
-python3 rtl_hier_gen.py -f content.txt -o demo.sv
-```
-
-执行完成后，可以看到如下文件：
-
-![image-20241211011017033](.assets/Figure_003)
-
-如果有同名不同路径的模块，会自动在后面加后缀用于区分：
-
-![image-20241211011517988](.assets/image-20241211011517988.png)
-
-![image-20241211011547438](.assets/image-20241211011547438.png)
-
-## 2. warning_lint_filter
-
-基于vcs编译仿真log，通过正则表达式过滤warning & lint信息，产生warning和lint的报告。将脚本复制到你想要检查的路径下，修改下图中的target_file和waive_list列表：
-
-![image-20250122000756660](./.assets/image-20250122000756660.png)
-
-然后执行如下命令 ：
-
-```
-python3 warning_lint_filter.py 
-```
-
-20250122更新：
-
-- 增加递归匹配文件功能，可以在当前路径及子文件夹中找到目标文件，然后过滤出warning 信息
-- 支持将过滤出的所有warning信息去重，然后保存到结果文件
-- 支持添加waive list，关键字被添加后，输出的结果将不包含waive list中的内容，waive list匹配的内容，也会独立输出到一个waive.log文件，方便后续review waive的warning。
-
-## 3. dummy block generation
-
-基于pyverilog库，通过调用python库中封装的函数，产生AST语法树，再通过解析语法树提取port信息和module name，产生对应的stub module。input信号输入到模块后悬空，output信号直接进行tie0处理，inout信号也进行tie0处理。
-
-```
-该脚本基于pyverilog开发，关于该库的文档可以参考：
-https://github.com/PyHDI/Pyverilog
-```
-
-使用脚本前，需要安装pyverilog库：
-
-```
 sudo apt install iverilog
 pip3 install pyverilog
 ```
 
-运行示例：
+**运行示例：**
 
-```
-# 带parameter的例子
+```bash
+# 带 parameter 的模块
 python3 dummy_gen.py -i demo.v -o demo_stub.v
-# 不带parameter的例子
+
+# 不带 parameter 的模块
 python3 dummy_gen.py -i demo1.v -o demo1_stub.v
 ```
 
-## 4. 终态检查/EOT检查(End of Test Checker)
+---
 
-基于输入件`final_state_check_list.csv`,产生`find_state_check_block.sv`模块文件,用于在仿真结束时检查csv中提供的信号状态。模块内通过testplusargs **DISABLE_EOT_HCECKER**对EOT检查进行控制，默认开启, 方便在异常场景下关闭检查，避免报错。脚本支持3个输入：
+## 4. End of Test Checker（终态检查）
 
-1. 自定义输入件名字（必须为csv文件）
+基于输入的 CSV 检查列表，自动生成 SystemVerilog 终态检查模块 `eot_checker.sv`，在仿真结束时检查指定信号的期望值。
 
-2. 自定义输出文件名字
+- 通过 `$test$plusargs("DISABLE_EOT_CHECKER")` 控制检查开关，默认为开启，方便异常场景下关闭检查
+- 支持断言报错级别控制（`$error` / `$warning` / `$info`）
 
-3. 支持断言报错信息verosity控制，可选info/warning/error
+**用法：**
 
+```bash
+python3 eot_gen.py -h
+```
 
 ```
-python3 eot_gen.py -h 
-usage: eot_gen.py [-h] [-f INPUT_FILE] [-o OUTPUT_NAME] [-v VEROSITY]
+usage: eot_gen.py [-h] [-f INPUT_FILE] [-o OUTPUT_NAME] [-v VERBOSITY]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -106,33 +139,37 @@ optional arguments:
                         input csv file to generate eot file
   -o OUTPUT_NAME, --output_name OUTPUT_NAME
                         output file name
-  -v VEROSITY, --verosity VEROSITY
-                        verosity level: 0:Error, 1:Warning, 2:Info
+  -v VERBOSITY, --verbosity VERBOSITY
+                        verbosity level: 0:Error, 1:Warning, 2:Info
 ```
 
-csv的格式如下：
-![image](./.assets/image.png)
+**CSV 输入格式：**
 
-> name：断言名字
-> 
-> hierarchy: 信号层次路径，推荐使用绝对路径
-> 
-> signal: 检查的信号名字
-> 
-> expect_value：在仿真结束时，检查信号的期望值
-> 
-> error_info: 断言失败时打印信息，辅助定位。可不写，会自动产生默认语句。
+![CSV 格式示例](./.assets/image.png)
 
-产生eot_module.sv之后，可以在Testbench顶层中直接例化即可。
+| 列名 | 说明 |
+|------|------|
+| `name` | 断言名称 |
+| `hierarchy` | 信号层次路径（推荐使用绝对路径） |
+| `signal` | 待检查的信号名 |
+| `expect_value` | 仿真结束时信号的期望值 |
+| `error_info` | 断言失败时的辅助定位信息（可选，不填则自动生成默认语句） |
+
+生成 `eot_checker.sv` 后，在 Testbench 顶层直接例化即可使用。
+
+---
 
 ## 5. Coverage Report Generation
 
-基于输入件`simv.vdb`,产生excel覆盖率报告,用于说明未覆盖点。脚本支持1个输入：
+基于 Synopsys `urg` 工具和 `.vdb` 覆盖率数据库，生成格式化的 Excel 覆盖率报告，列出各覆盖类型的未覆盖点。
 
-1.输入需要导出覆盖率的verilog module名。
+**用法：**
+
+```bash
+python3 gen_coverage_rpt.py -h
+```
 
 ```
-python3 gen_coverage_rpt.py -h
 usage: gen_coverage_rpt.py [-h] -m M
 
 Extract coverage data from VDB databases
@@ -142,7 +179,29 @@ optional arguments:
   -m M        Module name to extract
 ```
 
-运行实例：
-```
+**运行示例：**
+
+```bash
+# 在包含 simv.vdb/ 的目录下执行
 python3 gen_coverage_rpt.py -m uart_tx
+```
+
+**处理流程：**
+
+1. 调用 `urg -dir *.vdb -format text` 生成文本覆盖率报告
+2. 解析 `urgReport/modinfo.txt`，按模块拆分
+3. 按覆盖类型（Line / Cond / Toggle / FSM）进一步拆分
+4. 生成 `.xlsx` 报告，包含各类型的未覆盖项及对应的源码行号 / 表达式
+
+**输出目录结构：**
+
+```
+output/
+  ├── trace.log                     # 处理日志
+  ├── module/<module>.txt           # 按模块拆分后的原始报告
+  ├── module_split/<module>_line.txt
+  ├── module_split/<module>_cond.txt
+  ├── module_split/<module>_toggle.txt
+  ├── module_split/<module>_fsm.txt
+  └── <module>.xlsx                 # 最终 Excel 报告
 ```
