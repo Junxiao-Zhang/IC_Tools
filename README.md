@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-IC 设计与验证中开发的一些实用工具集，涵盖 RTL 层次路径生成、Warning 过滤、Dummy 模块生成、终态检查、覆盖率报告等场景。
+IC 设计与验证中开发的一些实用工具集，涵盖 RTL 层次路径生成、Warning 过滤、Dummy 模块生成、终态检查、覆盖率报告、LPDDR5 命令监控 VIP 等场景。
 
 ## 目录
 
@@ -11,6 +11,7 @@ IC 设计与验证中开发的一些实用工具集，涵盖 RTL 层次路径生
 - [3. Dummy Block Generation](#3-dummy-block-generation)
 - [4. End of Test Checker（终态检查）](#4-end-of-test-checker终态检查)
 - [5. Coverage Report Generation](#5-coverage-report-generation)
+- [6. LPDDR5 Monitor VIP](#6-lpddr5-monitor-vip)
 
 ## 依赖环境
 
@@ -21,6 +22,7 @@ IC 设计与验证中开发的一些实用工具集，涵盖 RTL 层次路径生
 | `dummy_gen` | `pyverilog` | `iverilog`（`sudo apt install iverilog`） |
 | `gen_cov_report` | `openpyxl` | Synopsys `urg`（需在 PATH 中） |
 | `unicode_string` | `pyfiglet` | — |
+| `lpddr5_mon_vip` | — | VCS（UVM-1.2）、Verdi（FSDB 波形，可选） |
 | 其他 | 标准库即可 | — |
 
 ---
@@ -205,3 +207,52 @@ output/
   ├── module_split/<module>_fsm.txt
   └── <module>.xlsx                 # 最终 Excel 报告
 ```
+
+---
+
+## 6. LPDDR5 Monitor VIP
+
+自研 LPDDR5 monitor VIP（SystemVerilog + UVM-1.2）：被动采样 CA 总线（CS + CA[6:0]，CK 双沿），解码 JEDEC 命令并输出命令字符串与地址字段（cmd / row / bank / bank_group / col）。解码行为与 Micron LPDDR5 golden 模型逐命令校准对齐（Task 7 / Task 8 校准）。
+
+**目录结构：**
+
+```
+lpddr5_mon_vip/
+  ├── if/     # 接口：CA 采样与 JEDEC 命令解码
+  │   ├── lpddr5_mon_jedec_chip_if.svi           # 单通道接口
+  │   └── lpddr5_mon_dual_chan_jedec_chip_if.svi # 双通道接口（内部例化两个单通道接口）
+  ├── agent/  # UVM agent（UVM-1.2）
+  │   ├── lpddr5_mon_agent_pkg.sv    # 包文件（按依赖序 include 全部类）
+  │   ├── lpddr5_mon_transaction.svh # 命令事务（cmd/row/col/bank/bank_group/sample_time）
+  │   ├── lpddr5_mon_config.svh      # 配置对象（持有 virtual interface 句柄）
+  │   ├── lpddr5_mon_monitor.svh     # monitor：订阅接口事件，事务经 analysis port 输出
+  │   ├── lpddr5_mon_agent.svh       # 被动 agent（is_active = UVM_PASSIVE）
+  │   └── lpddr5_mon_env.svh         # 环境：例化 2 个 agent（多 rank / 双通道）
+  └── tb/     # 自测台与运行脚本
+      ├── lpddr5_mon_tb_top.sv        # 单通道自测台（非 UVM，全命令覆盖）
+      ├── lpddr5_mon_dual_tb_top.sv   # 双通道自测台（非 UVM）
+      ├── lpddr5_mon_uvm_tb_top.sv    # UVM 冒烟自测台
+      ├── lpddr5_mon_smoke_test.svh   # UVM 冒烟测试
+      ├── run_sim.sh                  # 单通道自测：vcs 编译 + 运行
+      ├── run_sim_dual.sh             # 双通道自测
+      └── run_sim_uvm.sh              # UVM 冒烟自测
+```
+
+**功能特性：**
+
+- 纯被动监控，不驱动 CA 总线；CK 双沿采样——posedge 更新 cmd 字符串，negedge 更新地址字段并完成 AP 变体修正（如 `WR` → `WR_A`、`REFRESH_PER_BANK` → `REFRESH_ALL_BANK`）
+- 命令解码覆盖：MRW-1/2、MRR、ACTIVE-1/2、RD / RD16 / RD32（含 `_A` 变体）、WR / WR16 / WR32（含 `_A`）、MASKED_WRITING(_A)、CAS 变体、PRECHARGE(_ALL)、REFRESH_PER/ALL_BANK、MPC 变体、SRE/SRX、PDE/PDX、WFF/RFF/RDC、NOP / DESELECT
+- 通过 MRW 序列自动跟踪 bank organization（MR3 data[4:3]：00=BG / 01=8B / 10=16B），模式相关行为自动切换：命令命名（8B 为 `RD`/`WR`，16B/BG 为 `RD16`/`WR16`）、列地址映射（8B `<<5`，16B/BG `<<4`）、bank group 仅在 BG 模式报告
+- 事件门控：首个 `cs=1` 命令之前的 DESELECT 不报告；NOP / DESELECT / UNKNOWN 不产生 UVM 事务，保持日志简洁
+- 支持单通道 / 双通道接口；UVM 集成通过 config_db 键 `lpddr5_mon_vif_0/1` 传入 virtual interface，monitor 将解码结果打包为事务经 analysis port 输出
+
+**运行自测：**
+
+```bash
+cd lpddr5_mon_vip/tb
+./run_sim.sh        # 单通道自测（非 UVM）
+./run_sim_dual.sh   # 双通道自测（非 UVM）
+./run_sim_uvm.sh    # UVM 冒烟自测
+```
+
+自测脚本基于 VCS 编译运行（`-kdb`），通过后打印 `PASS`；默认 `+define+WAVES_FSDB` 转储 FSDB 波形（需 Verdi PLI）。
