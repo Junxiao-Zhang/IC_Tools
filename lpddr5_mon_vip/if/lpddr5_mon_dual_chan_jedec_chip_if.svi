@@ -1,0 +1,30 @@
+`ifndef GUARD_LPDDR5_MON_DUAL_CHAN_JEDEC_CHIP_IF_SVI
+`define GUARD_LPDDR5_MON_DUAL_CHAN_JEDEC_CHIP_IF_SVI
+
+// ======================================================================
+// 自研 LPDDR5 monitor VIP 双通道接口
+// 层次对齐 golden_tb 的双通道接口文件（对应文件中行 359 的定义）：内部例化
+// channel_a_if / channel_b_if 两个单通道接口。
+// ======================================================================
+`include "lpddr5_mon_jedec_chip_if.svi"
+
+interface lpddr5_mon_dual_chan_jedec_chip_if (
+  input logic ck_t_a,
+  input logic ck_c_a,
+  input logic ck_t_b,
+  input logic ck_c_b,
+  input logic cs_p_a,
+  input logic cs_p_b,
+  input logic [6:0] ca_a,
+  input logic [6:0] ca_b,
+  input logic reset_n
+);
+
+  lpddr5_mon_jedec_chip_if channel_a_if (.ck_t(ck_t_a), .ck_c(ck_c_a),
+                                         .cs_p(cs_p_a), .ca(ca_a), .reset_n(reset_n));
+  lpddr5_mon_jedec_chip_if channel_b_if (.ck_t(ck_t_b), .ck_c(ck_c_b),
+                                         .cs_p(cs_p_b), .ca(ca_b), .reset_n(reset_n));
+
+endinterface : lpddr5_mon_dual_chan_jedec_chip_if
+
+`endif

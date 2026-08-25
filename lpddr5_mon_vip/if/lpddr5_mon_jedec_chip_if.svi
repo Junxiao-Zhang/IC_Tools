@@ -1,0 +1,430 @@
+`ifndef GUARD_LPDDR5_MON_JEDEC_CHIP_IF_SVI
+`define GUARD_LPDDR5_MON_JEDEC_CHIP_IF_SVI
+
+// ======================================================================
+// 自研 LPDDR5 monitor VIP 单通道接口
+// 功能：被动采样 CA 总线（CS + CA[6:0]，CK 双沿），解码 JEDEC 命令，
+//       驱动 debug port 信号（信号名与位宽对齐 lpddr5_mon_debug_port）。
+//
+// Task 7 校准（2026-08-24，calib_*.txt + fsdb2vcd 逐命令对比 golden 得出）：
+//   - posedge 只更新 cmd 字符串；DESELECT posedge 把 row/bank/bg/col 清为 z
+//   - negedge 更新地址字段：
+//       ACTIVE_1 只更新 bank（+bg，BG 模式）；ACTIVE_2 只更新 row
+//       RD/RD16/RD32/WR/WR16/WR32/MASKED_WRITING(_A) 更新 bank+col（+bg，BG 模式）
+//       PRECHARGE 只更新 bank（+bg，BG 模式）；REFRESH_PER_BANK 只更新 bank；
+//       PRECHARGE_ALL / REFRESH_ALL_BANK（s[6]=1）不更新地址（2ch 实测）
+//   - WR 家族 posedge 写 "WR"（无 ap），negedge 按第二半 s[6]（ap）修正 "WR_A"；
+//     同样 WR16_A / WR32_A / MASKED_WRITING_A（RD 家族对称处理）
+//   - REF posedge 写 "REFRESH_PER_BANK"，negedge 按 s[6] 修正 "REFRESH_ALL_BANK"
+//
+// Task 8 校准（2ch all_cmd_test，2026-08-24）：
+//   - CAS 变体由第一半 {ca4=WS_WR, ca5=WS_RD, ca6=WS_FAST} 区分（实测
+//     CAS_WR/CAS_RD；FS/WS/AP/RF 按 Micron 位组合推测）
+//   - MPC posedge 恒报 "MPC_TRAINING"，negedge 按第二半 opcode 报变体名
+//     （0x01=START_WCK2DQI_INT_OSC、0x02=STOP_WCK2DQI_INT_OSC、
+//       0x05=START_ZQ_CALIB、0x06=LATCH_ZQ_CALIB 实测）
+//   - SRE/SRX 字符串为 SELF_REFRESH_ENTRY/SELF_REFRESH_EXIT（非 SRE/SRX）
+//   - PDE 第一半 {1, 1000000} 报 POWER_DOWN_ENTRY（周期 1 posedge，非 2 周期
+//     结束）；PDX 第一半 {1, 0000000} 与 NOP 同编码，power-down 状态（PDE 后、
+//     PDX 前）中报 POWER_DOWN_EXIT，否则 NOP
+//   - 首个 cs=1 命令（含 NOP）之前的 DESELECT 不报告（seen_cs1 语义）
+//   - 模式依赖命名：8B 模式 "RD"/"WR"，16B/BG 模式 "RD16"/"WR16"
+//   - bank_addr = s[3:0]（16B/BG 模式）；8B 模式例外（修复轮 1，见
+//     negedge 地址更新 case）：READ 的 s[3] 为 B4（burst 位），bank={1'b0,
+//     s[2:0]}；WR/WR32/RD32/MWR 恒为 s[3:0]。bank_group_id 仅 BG 模式
+//     （MR3 data[4:3]==00）报告 s[3:2]，8B/16B 模式保持 z
+//   - col_addr = Micron_col << (bk_org==8B ? 5 : 4)，
+//     Micron_col = {f[6:4], s[5:4], f[3]}（RD/RD16/RD32/WR/WR16/MWR），
+//     WR32 系 = {f[6:4], s[5:4], 1'b0}
+//   - row = {ACT1_f[6:3], ACT1_s[6:4], ACT2_f[6:3], ACT2_s[6:0]}
+//     （ACT-1 只内部锁存高段，ACT-2 negedge 一次性写完整 row）
+//   - bk_org 由 MRW 序列跟踪：MRW-1 第二半 = MR 地址；MR3（7'b0000011）的
+//     MRW-2 第二半 data[4:3] 即为 bk_org（00=BG、01=8B、10=16B）
+//   - time0 全部信号为 x（与 golden 一致）；首个 ck_t posedge 把地址写 z
+//     （对齐 golden 在 203125000fs 的地址初始化；golden 的 cmd 首个变化在
+//     首个 cs=1 命令处）
+//
+// 命令解码（casez 位序 = {CS, CA0..CA6} 重排，字段提取用原始位序
+// {CS, CA6..CA0}）与 Micron 模型 pins_to_pkt_1cyc 一致，见
+// ref/lpddr5_model/verilog_model/micron_mobile_lpddr5_model_pkg.sv:8716-8886。
+// 仍未在 golden 波形中观察到的命令字符串（MRR/RD_A/RD16_A/RD32_A/PRECHARGE_ALL/
+// RFM/DRFM/RDC/CAS_FS/CAS_WS/CAS_AP/CAS_RF/MPC 部分 opcode）为推测值，
+// 见 task-7/task-8 report concerns。
+// ======================================================================
+interface lpddr5_mon_jedec_chip_if (
+  input logic ck_t,
+  input logic ck_c,        // 保留以对齐 golden 端口结构，CA 解码不使用
+  input logic cs_p,
+  input logic [6:0] ca,    // CA[6:0]
+  input logic reset_n
+);
+
+  // ---------------- 命令类型枚举 ----------------
+  typedef enum {
+    CMD_NOP, CMD_DES, CMD_MRW1, CMD_MRW2, CMD_MRR, CMD_ACT1, CMD_ACT2,
+    CMD_RD, CMD_RDA, CMD_RD32, CMD_RDA32, CMD_WR, CMD_WRA, CMD_WR32, CMD_WRA32,
+    CMD_MWR, CMD_MWRA, CMD_CAS_FS, CMD_CAS_WS, CMD_CAS_AP, CMD_CAS_RD,
+    CMD_CAS_WR, CMD_CAS_RF, CMD_PRE, CMD_PRE_AB, CMD_REF, CMD_REF_AB,
+    CMD_RFM, CMD_RFM_AB, CMD_DRFM, CMD_SRE, CMD_SRX, CMD_MPC, CMD_MPC_NOP,
+    CMD_WFF, CMD_RFF, CMD_RDC, CMD_PDE, CMD_PDX, CMD_UNKNOWN
+  } lpddr5_mon_cmd_e;
+
+  // ---------------- 采样寄存器 ----------------
+  // first_half/second_half：bit7=CS，bit6=CA6 … bit0=CA0（原始布局，与 Micron
+  // latched_cmds 一致）
+  logic [7:0] first_half;
+  logic [7:0] second_half;
+
+  // ---------------- debug port（信号名与位宽对齐 lpddr5_mon_debug_port）----------------
+  // 注意：声明处不赋初值（time0 保持 x，与 golden 一致）；地址 z 初始化在下方
+  // initial 块（首个 ck_t posedge）完成。
+  logic [32*8-1:0] cmd;
+  logic [31:0] row_addr;
+  logic [3:0]  bank_addr;
+  logic [1:0]  bank_group_id;
+  logic [31:0] col_addr;
+
+  // 每解码出一个命令（含 NOP/DES）触发一次，供 UVM monitor 订阅
+  event cmd_sampled_event;
+
+  // 当前解码命令类型（仅 posedge 块驱动）
+  lpddr5_mon_cmd_e cmd_type = CMD_UNKNOWN;
+
+  // 当前命令字符串（posedge 写入初判，negedge 修正；cmd 即其右对齐拷贝）
+  string cmd_str = "";
+  // 本命令报告前的 cmd_str（posedge 报告处保存）：WFF/RFF/RDC 第二半非法
+  // 时恢复 cmd 为报告前值（与 UNKNOWN 非法编码"保持"行为一致）
+  string prev_cmd_str;
+
+  // 内部地址保持寄存器
+  logic [17:0] row_high_reg;   // ACT-1 锁存的 row[17:11]
+  logic [6:0]  mrw1_addr;      // MRW-1 第二半 = MR 地址
+  bit mrw1_pending;
+  logic [1:0]  bk_org = 2'b01; // MR3 data[4:3]：01=8B（默认）、10=16B、00=BG
+
+  // 首个 cs=1 命令之前 DESELECT 不报告
+  bit seen_cs1;
+
+  // power-down 状态：PDE 第一半 {cs=1, ca=1000000} 置位；
+  // PDX 第一半 {cs=1, ca=0000000}（与 NOP 编码相同）在 in_pd=1 时报告
+  // POWER_DOWN_EXIT 并清除（golden 实测：3525001000 报 POWER_DOWN_EXIT，
+  // 3526875000 的 NOP 编码报 NOP——由状态区分）
+  bit in_pd;
+
+  // ---------------- 命令字符串映射 ----------------
+  // 模式依赖命名：RD/WR 在 8B 模式，RD16/WR16 在 16B/BG 模式；RD32/WR32 与
+  // 模式无关。AP 修正（_A 后缀）在 negedge 由 s[6] 决定。
+  function string cmd_string_of(lpddr5_mon_cmd_e t);
+    case (t)
+      CMD_NOP:     return "NOP";
+      CMD_DES:     return "DESELECT";
+      CMD_MRW1:    return "MRW_1";
+      CMD_MRW2:    return "MRW_2";
+      CMD_MRR:     return "MRR";                    // 推测（未观察）
+      CMD_ACT1:    return "ACTIVE_1";
+      CMD_ACT2:    return "ACTIVE_2";
+      CMD_RD:      return (bk_org == 2'b01) ? "RD" : "RD16";
+      CMD_RDA:     return (bk_org == 2'b01) ? "RD_A" : "RD16_A";   // 推测（未观察）
+      CMD_RD32:    return "RD32";
+      CMD_RDA32:   return "RD32_A";                 // 推测（未观察）
+      CMD_WR:      return (bk_org == 2'b01) ? "WR" : "WR16";
+      CMD_WRA:     return (bk_org == 2'b01) ? "WR_A" : "WR16_A";
+      CMD_WR32:    return "WR32";
+      CMD_WRA32:   return "WR32_A";
+      CMD_MWR:     return "MASKED_WRITING";
+      CMD_MWRA:    return "MASKED_WRITING_A";
+      // CAS 变体：CA4=WS_WR、CA5=WS_RD、CA6=WS_FAST（golden 实测 CAS_WR/CAS_RD，
+      // FS/WS/AP/RF 按 Micron 命名推测，见 task-8-report）
+      CMD_CAS_FS:  return "CAS_FS";
+      CMD_CAS_WS:  return "CAS_WS";                 // 推测（未观察）
+      CMD_CAS_AP:  return "CAS_AP";                 // 推测（未观察）
+      CMD_CAS_RD:  return "CAS_RD";
+      CMD_CAS_WR:  return "CAS_WR";
+      CMD_CAS_RF:  return "CAS_RF";                 // 推测（未观察）
+      CMD_PRE:     return "PRECHARGE";
+      CMD_PRE_AB:  return "PRECHARGE_ALL";          // 推测（未观察）
+      CMD_REF:     return "REFRESH_PER_BANK";
+      CMD_REF_AB:  return "REFRESH_ALL_BANK";
+      CMD_RFM:     return "RFM";                    // 推测（未观察）
+      CMD_RFM_AB:  return "RFM_ALL";                // 推测（未观察）
+      CMD_DRFM:    return "DRFM";                   // 推测（未观察）
+      CMD_SRE:     return "SELF_REFRESH_ENTRY";     // 2ch 实测（原 "SRE" 修正）
+      CMD_SRX:     return "SELF_REFRESH_EXIT";      // 2ch 实测（原 "SRX" 修正）
+      CMD_MPC:     return "MPC_TRAINING";           // 2ch 实测：posedge 恒报 TRAINING
+      CMD_MPC_NOP: return "MPC_NOP";                // 推测（未观察）
+      CMD_WFF:     return "WRITE_FIFO";
+      CMD_RFF:     return "READ_FIFO";
+      CMD_RDC:     return "RDC";                    // 推测（未观察）
+      CMD_PDE:     return "POWER_DOWN_ENTRY";       // 2ch 实测（原 "PDE" 修正）
+      CMD_PDX:     return "POWER_DOWN_EXIT";        // 2ch 实测（原 "PDX" 修正）
+      default:     return "UNKNOWN";
+    endcase
+  endfunction
+
+  // monitor 用：当前命令字符串（与 cmd 内容一致；首个 cs=1 命令之前
+  // 为空串——golden 在此时不更新 cmd，monitor 依赖事件门控不会读到）
+  function string cmd_string();
+    return cmd_str;
+  endfunction
+
+  // ---------------- 命令类型解码（posedge 用第一半判定）----------------
+  // casez 位序 = {CS, CA0..CA6}（重排），与 Micron pins_to_pkt_1cyc 相同；
+  // 顺序与 Micron 一致（DES 分支放最后）。
+  function automatic lpddr5_mon_cmd_e decode_type(input logic [7:0] f);
+    logic [7:0] f_re;
+    // cs=0 一律 DESELECT，即使 ca 为 x/z（golden 实测：空闲期 ca 拉 x，
+    // 但 cmd 仍写 DESELECT——DESELECT 判定只看 CS）
+    if (f[7] === 1'b0)
+      return CMD_DES;
+    if ($isunknown(f))
+      return CMD_UNKNOWN;
+    f_re = {f[7], f[0], f[1], f[2], f[3], f[4], f[5], f[6]};
+    casez (f_re)
+      'b1_000_1100: return CMD_MRR;
+      'b1_000_100?: return CMD_MRW2;
+      'b1_000_1101: return CMD_MRW1;
+      'b1_000_0011: return CMD_WFF;   // 第二半 s[6:0]==0 才是 WFF
+      'b1_000_0010: return CMD_RFF;
+      'b1_000_0101: return CMD_RDC;
+      'b1_000_1010: return CMD_SRX;
+      'b1_000_1011: return CMD_SRE;
+      'b1_000_011?: return CMD_MPC;   // 第二半 opcode 在 negedge 判变体名
+      // CAS 变体 = {ca4(WS_WR), ca5(WS_RD), ca6(WS_FAST)}（2ch 实测 WR=100/RD=010，
+      // 其余按 Micron 位组合）
+      'b1_001_1100: return CMD_CAS_WR;
+      'b1_001_1010: return CMD_CAS_RD;
+      'b1_001_1001: return CMD_CAS_FS;
+      'b1_001_1101: return CMD_CAS_WS;  // 推测（未观察）
+      'b1_001_1011: return CMD_CAS_AP;  // 推测（未观察）
+      'b1_001_1000: return CMD_CAS_RF;  // 推测（未观察）
+      'b1_100_????: return CMD_RD;    // ap 由 s[6] 决定（RDA），negedge 修正
+      'b1_101_????: return CMD_RD32;
+      'b1_010_????: return CMD_MWR;
+      'b1_011_????: return CMD_WR;
+      'b1_001_0???: return CMD_WR32;
+      'b1_000_1110: return CMD_REF;   // RFM/DRFM 需配置，v1 按 REF 处理（见报告）
+      'b1_000_1111: return CMD_PRE;
+      'b1_110_????: return CMD_ACT2;
+      'b1_111_????: return CMD_ACT1;
+      'b1_000_0001: return CMD_PDE;   // 2ch 实测：PDE 第一半 {1, 1000000}
+      'b1_000_0000: return CMD_NOP;   // PDX 第一半同编码，靠 in_pd 状态区分
+      default:      return CMD_UNKNOWN;
+    endcase
+  endfunction
+
+  // ---------------- 字段提取 ----------------
+  // Micron_col（6 位，原始位序）：RD/RD16/RD32/WR/WR16/MWR = {f[6:4], s[5:4], f[3]}
+  //                                WR32/WR32_A = {f[6:4], s[5:4], 1'b0}
+  function automatic logic [5:0] micron_col(input logic [7:0] f, input logic [7:0] s);
+    if (cmd_type inside {CMD_WR32, CMD_WRA32})
+      return {f[6:4], s[5:4], 1'b0};
+    else
+      return {f[6:4], s[5:4], f[3]};
+  endfunction
+
+  // col 映射：8B 模式 <<5，16B/BG 模式 <<4（Task 7 从 w2r/odt 两场景
+  // 共 11 种 (cmd, bk_org) 组合实证）
+  function automatic logic [31:0] col_shift(input logic [5:0] mc);
+    return (bk_org == 2'b01) ? ({26'b0, mc} << 5) : ({26'b0, mc} << 4);
+  endfunction
+
+  // ---------------- debug port 更新 ----------------
+  function void update_cmd();
+    cmd = cmd_str;    // string 右对齐装入 256-bit（与 golden cmd 布局一致）
+  endfunction
+
+  // MPC 第二半 opcode → golden 字符串（2ch all_cmd_test 实测 4 个；
+  // 0x00/0x07 按 Micron 命名推测，其余未观测保持基础名）
+  function automatic string mpc_string(input logic [6:0] op);
+    case (op)
+      7'b0000001: return "MPC_START_WCK2DQI_INT_OSC";
+      7'b0000010: return "MPC_STOP_WCK2DQI_INT_OSC";
+      7'b0000101: return "MPC_START_ZQ_CALIB";
+      7'b0000110: return "MPC_LATCH_ZQ_CALIB";
+      7'b0000000: return "MPC_TRAINING";       // 推测（未观察）
+      7'b0000011: return "MPC_START_ZQ_CALIB"; // 推测（未观察）
+      7'b0000100: return "MPC_LATCH_ZQ_CALIB"; // 推测（未观察）
+      default:    return "MPC";                // 未知 opcode 保持基础名
+    endcase
+  endfunction
+
+  // ---------------- 地址初始化（对齐 golden：time0 x → 首沿后 z）----------------
+  initial begin
+    @(posedge ck_t);
+    row_addr       <= 'z;
+    bank_addr      <= 'z;
+    bank_group_id  <= 'z;
+    col_addr       <= 'z;
+  end
+
+  // ---------------- 采样与 cmd 更新（posedge）----------------
+  // 上升沿采样第一半字节并更新 cmd 字符串；#1ps 避免与激励/驱动竞争。
+  // golden 语义：posedge 只更新 cmd；DESELECT posedge 清地址为 z；首个 cs=1
+  // 命令之前的 DESELECT 不报告。cmd_type 只在本块驱动。
+  always @(posedge ck_t or negedge reset_n) begin
+    if (!reset_n) begin
+      first_half   <= '0;
+      seen_cs1     <= 1'b0;
+      mrw1_pending <= 1'b0;
+      in_pd        <= 1'b0;
+      cmd_type      = CMD_UNKNOWN;
+    end else begin
+      lpddr5_mon_cmd_e t;
+      // 0 delay 采样（与 golden 接口一致）：真实场景中第二半 ca 恰在
+      // negedge 时刻切换为 x（空闲期 ca=x），#1ps 会采到 x；0 delay
+      // 与 ck 事件同刻读取，事件序与 golden 相同（先 ck 后 ca）
+      first_half <= {cs_p, ca};
+      t = decode_type({cs_p, ca});
+      cmd_type = t;
+      if (cs_p)
+        seen_cs1 = 1'b1;             // 首个 cs=1 命令（含 NOP）立即报告
+      if ((seen_cs1 || cs_p) && t != CMD_UNKNOWN) begin
+        prev_cmd_str = cmd_str;      // 保存报告前值（非法第二半校验需恢复）
+        // PDX 第一半 {1, 0000000} 与 NOP 同编码：power-down 状态中报
+        // POWER_DOWN_EXIT 并退出（golden 实测 3525001000 行为）
+        if (t == CMD_NOP && in_pd) begin
+          cmd_str = cmd_string_of(CMD_PDX);
+          in_pd   = 1'b0;
+        end else begin
+          cmd_str = cmd_string_of(t);
+          if (t == CMD_PDE)
+            in_pd = 1'b1;            // 进入 power-down（PDE 周期 1 即置位）
+        end
+        update_cmd();
+        if (t == CMD_DES) begin
+          row_addr      <= 'z;
+          bank_addr     <= 'z;
+          bank_group_id <= 'z;
+          col_addr      <= 'z;
+        end
+      end
+    end
+  end
+
+  // ---------------- 地址更新与字符串修正（negedge）----------------
+  always @(negedge ck_t or negedge reset_n) begin
+    if (!reset_n) begin
+      second_half  <= '0;
+      row_high_reg <= '0;
+      mrw1_addr    <= '0;
+    end else begin
+      // 0 delay 采样（与 golden 一致）：真实场景第二半 ca 恰在 negedge 同刻
+      // 切换为 x，golden 接口 0 delay 读 ca（ck 事件先于 ca 变化事件）采到
+      // 有效值；#1ps 会采到 x。测试台信号在边沿后 2ps 建立，0 delay
+      // 采到的仍是边沿时刻值（与 #1ps 相同），不影响自测。
+      second_half = {cs_p, ca};   // 阻塞赋值：本块后续立即使用
+      if (seen_cs1) begin
+        // 首个 cs=1 命令之前的 negedge 不更新任何 debug port 字段
+        // （golden 此时 cmd 保持 x；DESELECT 不泄漏字符串）
+        // ---- WFF/RFF/RDC 第二半校验（Micron valid_cmd=0）----
+        // 第一半模式匹配但第二半非全 0 是非法编码：posedge 已报基础名，
+        // 此处恢复 cmd 为报告前值（与 UNKNOWN 非法编码"保持"行为一致，
+        // 见自测台"非法编码"用例）；地址字段不更新（case 分支跳过）
+        if ((cmd_type == CMD_WFF || cmd_type == CMD_RFF || cmd_type == CMD_RDC) &&
+            second_half[6:0] != 7'b0) begin
+          cmd_str = prev_cmd_str;
+        end else begin
+          // ---- MRW 序列跟踪（MR 地址 -> bk_org）----
+          // 真实场景 MRW-1/MRW-2 严格相邻（w2r/odt 实测），DES/NOP/CAS_FS
+          // 不清 pending，保证 MRW-1 → MRW-2 配对不被中间命令打断
+          if (cmd_type == CMD_MRW1) begin
+            mrw1_addr    = second_half[6:0];
+            mrw1_pending = 1'b1;
+          end else if (cmd_type == CMD_MRW2) begin
+            if (mrw1_pending && mrw1_addr == 7'b0000011)   // MR3
+              bk_org = second_half[4:3];                   // data[4:3]：00=BG 01=8B 10=16B
+            mrw1_pending = 1'b0;
+          end else if (!(cmd_type inside {CMD_DES, CMD_NOP, CMD_CAS_FS, CMD_CAS_WS,
+                                          CMD_CAS_AP, CMD_CAS_RD, CMD_CAS_WR, CMD_CAS_RF})) begin
+            mrw1_pending = 1'b0;
+          end
+
+          // ---- 地址字段更新（依校准语义）----
+          case (cmd_type)
+            CMD_ACT1: begin
+              row_high_reg      = {first_half[6:3], second_half[6:4]};
+              bank_addr    = second_half[3:0];
+              if (bk_org == 2'b00) bank_group_id = second_half[3:2];
+            end
+            CMD_ACT2: begin
+              row_addr = {row_high_reg, first_half[6:3], second_half[6:0]};
+            end
+            // decode_type 只返回基础类型，_A 变体在修正链按 s[6] 处理
+            // CMD_RD 单独处理（修复轮 1）：8B 模式（bk_org==2'b01）s[3] 是
+            // B4（burst 位）不是 bank 位 → bank={1'b0, s[2:0]}；16B/BG 模式
+            // s[3] 为 bank 位 → bank=s[3:0]。校准证据：2ch diff_bl 实测 golden
+            // bank 1101->0101、1001->0001（8B 段）；RD16 样本 1111/1001 全
+            // 保留（16B 段）；Micron 模型 BGBK_8 时 READ burst_start[4]=s[3]
+            // （B4）。RD32/WR/WR32/MWR 无 B4 位（Micron 模型无 burst_start
+            // 处理，2ch 实测含 s[3]=1 样本全匹配），恒为 bank=s[3:0]
+            CMD_RD: begin
+              bank_addr = (bk_org == 2'b01) ? {1'b0, second_half[2:0]}
+                                                 : second_half[3:0];
+              if (bk_org == 2'b00) bank_group_id = second_half[3:2];
+              col_addr  = col_shift(micron_col(first_half, second_half));
+            end
+            CMD_RD32, CMD_WR, CMD_WR32, CMD_MWR: begin
+              bank_addr = second_half[3:0];
+              if (bk_org == 2'b00) bank_group_id = second_half[3:2];
+              col_addr  = col_shift(micron_col(first_half, second_half));
+            end
+            // REFRESH_PER_BANK 更新 bank（2ch 实测 golden 2938750000 bank=1）；
+            // REFRESH_ALL_BANK（s[6]=1）不更新（golden 保持 z）
+            CMD_REF: begin
+              if (!second_half[6])
+                bank_addr = second_half[3:0];
+            end
+            // PRECHARGE 更新 bank（+bg）；PRECHARGE_ALL（s[6]=1）不更新
+            // （2ch 实测 golden 对 PRECHARGE_ALL 保持 z）
+            CMD_PRE: begin
+              if (!second_half[6]) begin
+                bank_addr = second_half[3:0];
+                if (bk_org == 2'b00) bank_group_id = second_half[3:2];
+              end
+            end
+            default: ;
+          endcase
+
+          // ---- negedge 字符串修正（ap / REF/PRE 全 bank 位在第二半 s[6]）----
+          // decode_type 只返回基础类型（CMD_WR 等），_A 变体由第二半 s[6] 判定；
+          // posedge 已写好基础名，此处仅在 s[6]=1 时改写为 _A 变体
+          if (cmd_type == CMD_WR) begin
+            if (second_half[6]) cmd_str = (bk_org == 2'b01) ? "WR_A" : "WR16_A";
+          end else if (cmd_type == CMD_WR32) begin
+            if (second_half[6]) cmd_str = "WR32_A";
+          end else if (cmd_type == CMD_MWR) begin
+            if (second_half[6]) cmd_str = "MASKED_WRITING_A";
+          end else if (cmd_type == CMD_RD) begin
+            if (second_half[6]) cmd_str = (bk_org == 2'b01) ? "RD_A" : "RD16_A";
+          end else if (cmd_type == CMD_RD32) begin
+            if (second_half[6]) cmd_str = "RD32_A";
+          end else if (cmd_type == CMD_REF) begin
+            if (second_half[6]) cmd_str = "REFRESH_ALL_BANK";
+          end else if (cmd_type == CMD_PRE) begin
+            // PRECHARGE_ALL：s[6]=1（AP 位）→ 全 bank 预充电
+            // （修复轮 1：原修正链漏掉 PRE，s[6]=1 恒报 PRECHARGE）
+            if (second_half[6]) cmd_str = "PRECHARGE_ALL";
+          end else if (cmd_type == CMD_MPC) begin
+            // MPC 第二半 = opcode：golden 实测 posedge 报 MPC_TRAINING、
+            // negedge 按 opcode 报变体名（0x01/0x02/0x05/0x06 实证）
+            cmd_str = mpc_string(second_half[6:0]);
+          end
+        end
+        update_cmd();
+      end
+      // 事件门控：首命令前不触发；未知命令（x/z 输入）不触发
+      if (seen_cs1 && cmd_type != CMD_UNKNOWN)
+        -> cmd_sampled_event;
+    end
+  end
+
+  // debug port modport（层次路径可读性）
+  modport lpddr5_mon_debug_port(output bank_addr,
+                               output bank_group_id,
+                               output row_addr,
+                               output col_addr,
+                               output cmd);
+
+endinterface : lpddr5_mon_jedec_chip_if
+
+`endif
